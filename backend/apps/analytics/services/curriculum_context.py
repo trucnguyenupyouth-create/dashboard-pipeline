@@ -99,13 +99,50 @@ def get_curriculum_constants_for_grade(grade_level: Optional[int] = None) -> str
     return base + grade_content
 
 
-# Legacy constant for backward compatibility
-CURRICULUM_CONSTANTS = get_curriculum_constants_for_grade(9)
+def get_golden_examples_for_grade(grade_level=None) -> str:
+    """Return grade-appropriate golden example for the analytics prompt."""
 
-GOLDEN_ERROR_EXAMPLES = """
-### 🎯 GOLDEN EXAMPLES — Output CỦA BẠN phải đạt mức chất lượng này
+    # Grade 6–7: integer/fraction/số nguyên tố domain
+    example_6_7 = """
+### 🎯 GOLDEN EXAMPLE — Output CỦA BẠN phải đạt mức chất lượng này
 
-**VÍ DỤ 1 (Lỗi trình bày — ERR_002):**
+**VÍ DỤ (Lỗi kiến thức — ERR_001):**
+```json
+{
+  "id": "ERR_001",
+  "tag": "Không nhớ bảng số nguyên tố cơ bản (nhầm 27, 1; thiếu 11, 17)",
+  "error_type": "kiến thức",
+  "fullDescription": "Đề bài yêu cầu: Liệt kê các số nguyên tố từ 1 đến 30.\\n- Học sinh làm: Nhiều biểu hiện khác nhau — thừa số không phải SNT (27, 21, 1), thiếu số SNT (11, 13, 17, 29), hoặc chỉ ghi kết quả mà không liệt kê.\\n- Tắc ở bước: Học sinh chưa nắm vững định nghĩa số nguyên tố (chỉ có đúng 2 ước: 1 và chính nó) và chưa thuộc bảng SNT cơ bản đến 30.",
+  "commonMistakes": [
+    "Coi 27 là SNT (quên 27 = 3×9)",
+    "Coi 1 là SNT (1 chỉ có 1 ước)",
+    "Thiếu 11, 13, 17, 29 trong danh sách"
+  ],
+  "example": "Nhiều học sinh: Liệt kê 2, 3, 5, 7, 9, 11, 13, 17, 19, 21, 23, 27, 29 (thừa 9, 21, 27)",
+  "affected_questions": ["3.1"],
+  "affectedStudentIds": [1001, 1003, 1005],
+  "severity": "high",
+  "suggestedActions": [
+    {
+      "type": "review_concept",
+      "title": "Ôn định nghĩa và bảng SNT đến 30",
+      "description": "Viết lên bảng: 'SNT = số tự nhiên > 1, chỉ có đúng 2 ước'. Cho học sinh kiểm tra lần lượt từng số từ 2–30 bằng cách thử chia. Nhấn mạnh: 1 không phải SNT, 27=3×9 nên không phải SNT."
+    },
+    {
+      "type": "practice_exercises",
+      "title": "Flashcard bảng SNT",
+      "description": "Giao học sinh tự lập flashcard 25 số nguyên tố đầu tiên, kiểm tra lại vào đầu tiết sau bằng cách đọc thuộc."
+    }
+  ]
+}
+```
+"""
+
+    # Grade 8–9: geometry/algebra/probability domain
+    example_8_9 = """
+### 🎯 GOLDEN EXAMPLE — Output CỦA BẠN phải đạt mức chất lượng này
+
+**VÍ DỤ (Lỗi trình bày — ERR_002):**
 ```json
 {
   "id": "ERR_002",
@@ -134,8 +171,13 @@ GOLDEN_ERROR_EXAMPLES = """
   ]
 }
 ```
+"""
 
-**VÍ DỤ 2 (Lỗi kỹ thuật — ERR_005):**
+    # Grade 10–12: calculus/stats/inequality domain
+    example_10_12 = """
+### 🎯 GOLDEN EXAMPLE — Output CỦA BẠN phải đạt mức chất lượng này
+
+**VÍ DỤ (Lỗi kỹ thuật — ERR_005):**
 ```json
 {
   "id": "ERR_005",
@@ -165,3 +207,20 @@ GOLDEN_ERROR_EXAMPLES = """
 }
 ```
 """
+
+    grade_bands = {
+        6: example_6_7,
+        7: example_6_7,
+        8: example_8_9,
+        9: example_8_9,
+        10: example_10_12,
+        11: example_10_12,
+        12: example_10_12,
+    }
+
+    return grade_bands.get(grade_level, example_8_9)
+
+
+# Legacy constants for backward compatibility
+CURRICULUM_CONSTANTS = get_curriculum_constants_for_grade(9)
+GOLDEN_ERROR_EXAMPLES = get_golden_examples_for_grade(9)  # default grade 9

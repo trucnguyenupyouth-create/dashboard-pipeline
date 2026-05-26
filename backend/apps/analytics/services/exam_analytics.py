@@ -416,6 +416,25 @@ class ExamAnalyticsService:
         total_students = len(all_students_scores)
         class_avg = sum(s[1] for s in all_students_scores) / total_students if total_students else 0
 
+        # Build student name lookup for unattempted table
+        student_id_to_name = {}
+        for g_name, g_data in student_groups.items():
+            for s in g_data['students']:
+                student_id_to_name[int(s['id'])] = s['name']
+
+        # Build unattempted table: students who skipped each question entirely
+        unattempted_lines = ["| Student ID | Tên | Câu bỏ |"]
+        unattempted_lines.append("|------------|-----|--------|")
+        has_unattempted = False
+        for s_id, s_data in score_matrix.items():
+            skipped = [q_data['label'] for q_data in s_data['results'].values()
+                       if q_data.get('status') == 'unattempted']
+            if skipped:
+                has_unattempted = True
+                name = student_id_to_name.get(int(s_id), f"HS{s_id}")
+                unattempted_lines.append(f"| {s_id} | {name} | {', '.join(skipped)} |")
+        unattempted_text = "\n".join(unattempted_lines) if has_unattempted else "(Không có học sinh nào bỏ câu)"
+
         prompt = f'''Đề thi: {exam.name} (Lớp {exam.grade_level})
 
 ═══════════════════════════════════════════
@@ -445,6 +464,12 @@ PHÂN NHÓM HỌC SINH
 ═══════════════════════════════════════════
 THÔNG TIN BỔ SUNG — DÙNG CHO ai_insights
 ═══════════════════════════════════════════
+═══════════════════════════════════════════
+DANH SÁCH HỌC SINH BỎ CÂU (KHÔNG LÀM)
+═══════════════════════════════════════════
+⚠️ Những học sinh trong bảng này KHÔNG được gán vào affectedStudentIds của bất kỳ error entry nào liên quan đến câu họ bỏ — kể cả khi điểm = 0.
+{unattempted_text}
+
 LOWEST_SCORING_STUDENT:
   Tên: {lowest_name}
   Điểm: {lowest_score}/10
@@ -525,26 +550,48 @@ TỔNG SỐ HỌC SINH: {total_students}
                 if q_data['score'] <= (q_data['maxScore'] / 2.0):
                     label_to_struggling_students.setdefault(label, set()).add(s_name)
 
+        # Build attempted_set: (student_id_int, question_label) pairs where student actually attempted
+        attempted_set = set()
+        name_to_id = {}  # reverse of student_id_to_name
+        for s_id, s_data in students_with_risk.items():
+            s_int = int(s_id)
+            s_name = student_id_to_name.get(s_int, '')
+            if s_name:
+                name_to_id[s_name] = s_int
+            for q_id, q_data in s_data['results'].items():
+                if q_data.get('status') != 'unattempted':
+                    attempted_set.add((s_int, q_data['label']))
+
         # For each AI error, resolve affected students
         for err in errors_ai:
             affected_names = set()
+            error_q_labels = set(err.get('affected_questions', []) or err.get('questionIds', []))
+
             # 1. Primary: Use explicit student IDs from the AI
+            #    Filter out students who did not attempt any of the error's questions
             student_ids = err.get('affectedStudentIds', [])
             if student_ids:
                 for s_id in student_ids:
                     try:
-                        s_name = student_id_to_name.get(int(s_id))
-                        if s_name:
-                            affected_names.add(s_name)
+                        s_int = int(s_id)
+                        s_name = student_id_to_name.get(s_int)
+                        if not s_name:
+                            continue
+                        # Only include if student actually attempted at least one error question
+                        if error_q_labels and not any((s_int, lbl) in attempted_set for lbl in error_q_labels):
+                            continue  # Student skipped all related questions — exclude
+                        affected_names.add(s_name)
                     except (ValueError, TypeError):
                         continue
-            
-            # 2. Fallback: Determine deterministically from affected questions if no IDs provided
+
+            # 2. Fallback: score-based assignment — only include students who attempted the question
             if not affected_names:
-                q_labels = err.get('affected_questions', []) or err.get('questionIds', [])
-                for label in q_labels:
-                    affected_names.update(label_to_struggling_students.get(label, set()))
-            
+                for label in error_q_labels:
+                    for s_name in label_to_struggling_students.get(label, set()):
+                        s_int = name_to_id.get(s_name)
+                        if s_int and (s_int, label) in attempted_set:
+                            affected_names.add(s_name)
+
             err['_resolved_affected_students'] = list(affected_names)
 
         # 1. Build Students List
